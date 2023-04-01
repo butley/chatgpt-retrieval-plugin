@@ -37,7 +37,7 @@ jobs:
           COMMIT_SHA=${{ github.sha }}
           TAG="$BRANCH_NAME-$COMMIT_SHA"
           git tag $TAG
-          git remote set-url origin https://$GITHUB_ACTOR:${{ secrets.$GITHUB_TOKEN }}@github.com/$GITHUB_REPOSITORY
+          git remote set-url origin https://$GITHUB_ACTOR:${{ secrets.REPO_GITHUB_TOKEN }}@github.com/$GITHUB_REPOSITORY
           git push origin $TAG
 
       - name: Build and push Docker image
