@@ -24,11 +24,6 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Configure git
-        run: |
-          git config --global user.email "guiramos@gmail.com"
-          git config --global user.name "Guilherme Ramos"
-
       - name: Create and push git tag
         run: |
           BRANCH_NAME=$(echo ${{ github.ref }} | sed 's/refs\/heads\///')
@@ -36,6 +31,8 @@ jobs:
           TAG="$BRANCH_NAME-$COMMIT_SHA"
           git tag $TAG
           git remote set-url origin https://${{ secrets.REPO_GITHUB_USER }}:${{ secrets.REPO_GITHUB_TOKEN }}@github.com/$GITHUB_REPOSITORY
+          git config --global user.email "you@example.com"
+          git config --global user.name "Your Name"
           git push origin $TAG
 
       - name: Build and push Docker image
