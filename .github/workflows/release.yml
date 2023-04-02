@@ -38,7 +38,7 @@ jobs:
         id : create_release
         uses : actions/create-release@latest
         with :
-          tag_name : ${{ steps.tag_action.outputs.tag }}
-          release_name : ${{ steps.tag_action.outputs.tag }}
+          tag_name : v${{ github.run_number }}
+          release_name : Release ${{ github.run_number }}
           draft : false
           prerelease : false
