@@ -3,6 +3,9 @@ on:
   push:
     branches: [ main, staging ]
 
+env:
+  GITHUB_TOKEN: ${{ secrets.REPO_GITHUB_TOKEN }}
+
 jobs:
   build_and_push:
     runs-on: ubuntu-latest
