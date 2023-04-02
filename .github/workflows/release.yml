@@ -3,6 +3,9 @@ on:
   push:
     branches: [ main, staging ]
 
+env:
+  GITHUB_TOKEN: ${{ secrets.REPO_GITHUB_TOKEN }}
+
 jobs:
   build_and_push:
     runs-on: ubuntu-latest
@@ -37,7 +40,5 @@ jobs:
         with :
           tag_name : ${{ steps.tag_action.outputs.tag }}
           release_name : ${{ steps.tag_action.outputs.tag }}
-          body : |
-            ${{ steps.tag_action.outputs.clean_changelog }}
           draft : false
           prerelease : false
