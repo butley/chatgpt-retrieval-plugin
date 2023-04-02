@@ -24,17 +24,6 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Create and push git tag
-        run: |
-          BRANCH_NAME=$(echo ${{ github.ref }} | sed 's/refs\/heads\///')
-          COMMIT_SHA=${{ github.sha }}
-          TAG="$BRANCH_NAME-$COMMIT_SHA"
-          git tag $TAG
-          git remote set-url origin https://${{ secrets.REPO_GITHUB_USER }}:${{ secrets.REPO_GITHUB_TOKEN }}@github.com/$GITHUB_REPOSITORY
-          git config --global user.email "you@example.com"
-          git config --global user.name "Your Name"
-          git push origin $TAG
-
       - name: Build and push Docker image
         uses: docker/build-push-action@v2
         with:
@@ -42,24 +31,13 @@ jobs:
           push: true
           tags: registry.hyperindiv.com/chatgpt-retrieval-plugin:latest
 
-  create-github-release:
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v2
-
-      - name: Set up GitHub CLI
-        run: |
-          sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-key C99B11DEB97541F0
-          sudo apt-add-repository https://cli.github.com/packages
-          sudo apt-get update
-          sudo apt-get install gh
-
-      - name: Create GitHub Release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          TAG_NAME=${GITHUB_REF#refs/tags/}
-          gh auth login --with-token <<< $GITHUB_TOKEN
-          gh release create $TAG_NAME --title "Release $TAG_NAME" --notes "New release for tag $TAG_NAME"
+      - name : Create tag and release
+        id : create_release
+        uses : actions/create-release@latest
+        with :
+          tag_name : ${{ steps.tag_action.outputs.tag }}
+          release_name : ${{ steps.tag_action.outputs.tag }}
+          body : |
+            ${{ steps.tag_action.outputs.clean_changelog }}
+          draft : false
+          prerelease : false
