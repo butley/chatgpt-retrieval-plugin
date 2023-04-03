@@ -4,11 +4,11 @@ info:
   description: A retrieval API for querying and filtering documents based on natural language queries and metadata
   version: 1.0.0
 servers:
-  - url: http://0.0.0.0:8000
+  - url: https://retrieval.gramos.net
 paths:
   /upsert:
     post:
-      summary: Upsert
+      summary: upsert insert update
       description: Save chat information. Accepts an array of documents with text (potential questions + conversation text), metadata (source 'chat' and timestamp, no ID as this will be generated). Confirm with the user before saving, ask for more details/context.
       operationId: upsert_post
       requestBody:
@@ -34,7 +34,7 @@ paths:
         - HTTPBearer: []
   /query:
     post:
-      summary: Query
+      summary: query search lookup
       description: Accepts search query objects array each with query and optional filter. Break down complex questions into sub-questions. Refine results by criteria, e.g. time / source, don't do this often. Split queries if ResponseTooLargeError occurs.
       operationId: query_post
       requestBody:
@@ -60,7 +60,7 @@ paths:
         - HTTPBearer: []
   /delete:
     delete:
-      summary: Delete
+      summary: delete remove erase
       description: Accepts ids  array each and optional filter to delete records.
       operationId: delete_delete
       requestBody:
