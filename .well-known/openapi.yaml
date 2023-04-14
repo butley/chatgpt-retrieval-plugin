@@ -1,7 +1,7 @@
 openapi: 3.0.2
 info:
   title: Long term memory
-  description: A REST API for storing and querying memory information and documents based on natural language and metadata
+  description: A REST API for storing and querying memory information, documents and files based on natural language and metadata
   version: 1.0.0
 servers:
   - url: https://retrieval.gramos.net
