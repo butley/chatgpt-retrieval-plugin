@@ -10,7 +10,7 @@
   },
   "api": {
     "type": "openapi",
-    "url": "https://localhost:8000/.well-known/openapi.yaml",
+    "url": "http://localhost:8000/.well-known/openapi.yaml",
     "has_user_authentication": false
   },
   "logo_url": "https://retrieval.gramos.net/.well-known/logo.png",
