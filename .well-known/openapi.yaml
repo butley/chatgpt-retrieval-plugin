@@ -4,12 +4,12 @@ info:
   description: A REST API for storing and querying memory information, documents and files based on natural language and metadata
   version: 1.0.0
 servers:
-  - url: https://retrieval.gramos.net
+  - url: http://localhost:8000
 paths:
   /upsert:
     post:
-      summary: upsert insert update remember
-      description: Save and remember information for late use. Accepts an array of documents with text (potential questions + conversation text), metadata (source 'chat' and timestamp, no ID as this will be generated). Confirm with the user before saving, ask for more details/context.
+      summary: upsert insert update save store
+      description: Save or store information for late use. Accepts an array of documents with text (potential questions + conversation text), metadata (source 'chat' and timestamp, no ID as this will be generated). Confirm with the user before saving, ask for more details/context.
       operationId: upsert_post
       requestBody:
         content:
@@ -34,8 +34,8 @@ paths:
         - HTTPBearer: []
   /query:
     post:
-      summary: query search lookup
-      description: Accepts search query objects array each with query and optional filter. Break down complex questions into sub-questions. Refine results by criteria, e.g. time / source, don't do this often. Split queries if ResponseTooLargeError occurs.
+      summary: query search lookup remember
+      description: Search or query long term memory for relevant information. Remember data. Accepts a query string and optional filter to search data.
       operationId: query_post
       requestBody:
         content:
