@@ -1,6 +1,7 @@
 import os
+from typing import Optional
 import uvicorn
-from fastapi import FastAPI, File, HTTPException, Depends, Body, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Depends, Body, UploadFile
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.staticfiles import StaticFiles
 
@@ -15,6 +16,8 @@ from models.api import (
 from datastore.factory import get_datastore
 from services.file import get_document_from_file
 
+from models.models import DocumentMetadata, Source
+
 bearer_scheme = HTTPBearer()
 BEARER_TOKEN = os.environ.get("BEARER_TOKEN")
 assert BEARER_TOKEN is not None
@@ -26,7 +29,7 @@ def validate_token(credentials: HTTPAuthorizationCredentials = Depends(bearer_sc
     return credentials
 
 
-app = FastAPI(dependencies=[Depends(validate_token)])
+app = FastAPI()
 app.mount("/.well-known", StaticFiles(directory=".well-known"), name="static")
 
 # Create a sub-application, in order to access just the query endpoint in an OpenAPI schema, found at http://0.0.0.0:8000/sub/openapi.json when the app is running locally
@@ -46,8 +49,18 @@ app.mount("/sub", sub_app)
 )
 async def upsert_file(
     file: UploadFile = File(...),
+    metadata: Optional[str] = Form(None),
 ):
-    document = await get_document_from_file(file)
+    try:
+        metadata_obj = (
+            DocumentMetadata.parse_raw(metadata)
+            if metadata
+            else DocumentMetadata(source=Source.file)
+        )
+    except:
+        metadata_obj = DocumentMetadata(source=Source.file)
+
+    document = await get_document_from_file(file, metadata_obj)
 
     try:
         ids = await datastore.upsert([document])
