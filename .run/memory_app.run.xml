@@ -1,0 +1,44 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="memory_app" type="PythonConfigurationType" factoryName="Python" nameIsGenerated="true">
+    <module name="chatgpt-retrieval-plugin" />
+    <option name="INTERPRETER_OPTIONS" value="" />
+    <option name="PARENT_ENVS" value="true" />
+    <envs>
+      <env name="BEARER_TOKEN" value="123" />
+      <env name="DATASTORE" value="weaviate" />
+      <env name="PINECONE_API_KEY" value="08f31131-72c6-4a8f-ab80-fe5fc6cebee0" />
+      <env name="PINECONE_ENVIRONMENT" value="eu-west1-gcp" />
+      <env name="PINECONE_INDEX" value="memory" />
+      <env name="PYTHONUNBUFFERED" value="1" />
+      <env name="REDIS_HOST" value="192.168.2.85" />
+      <env name="WEAVIATE_PORT" value="9981" />
+      <env name="WEAVIATE_URL" value="http://192.168.2.53:9981" />
+      <env name="OPENAI_API_KEY" value="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" />
+    </envs>
+    <option name="SDK_HOME" value="$USER_HOME$/Library/Caches/pypoetry/virtualenvs/chatgpt-retrieval-plugin-68sSWJig-py3.10/bin/python" />
+    <option name="SDK_NAME" value="Poetry (chatgpt-retrieval-plugin)" />
+    <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/" />
+    <option name="IS_MODULE_SDK" value="false" />
+    <option name="ADD_CONTENT_ROOTS" value="true" />
+    <option name="ADD_SOURCE_ROOTS" value="true" />
+    <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
+    <EXTENSION ID="net.ashald.envfile">
+      <option name="IS_ENABLED" value="false" />
+      <option name="IS_SUBST" value="false" />
+      <option name="IS_PATH_MACRO_SUPPORTED" value="false" />
+      <option name="IS_IGNORE_MISSING_FILES" value="false" />
+      <option name="IS_ENABLE_EXPERIMENTAL_INTEGRATIONS" value="false" />
+      <ENTRIES>
+        <ENTRY IS_ENABLED="true" PARSER="runconfig" IS_EXECUTABLE="false" />
+      </ENTRIES>
+    </EXTENSION>
+    <option name="SCRIPT_NAME" value="$PROJECT_DIR$/server/memory_app.py" />
+    <option name="PARAMETERS" value="" />
+    <option name="SHOW_COMMAND_LINE" value="false" />
+    <option name="EMULATE_TERMINAL" value="false" />
+    <option name="MODULE_MODE" value="false" />
+    <option name="REDIRECT_INPUT" value="false" />
+    <option name="INPUT_FILE" value="" />
+    <method v="2" />
+  </configuration>
+</component>
