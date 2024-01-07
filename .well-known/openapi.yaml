@@ -4,7 +4,7 @@ info:
   description: A REST API for storing and querying memory information, documents and files based on natural language and metadata
   version: 1.0.0
 servers:
-  - url: http://localhost:8000
+  - url: https://retrieval.hyperindiv.com/
 paths:
   /upsert:
     post:

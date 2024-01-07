@@ -23,6 +23,8 @@ bearer_scheme = HTTPBearer()
 BEARER_TOKEN = os.environ.get("BEARER_TOKEN")
 assert BEARER_TOKEN is not None
 
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+assert OPENAI_API_KEY is not None
 
 def validate_token(credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme)):
     if credentials.scheme != "Bearer" or credentials.credentials != BEARER_TOKEN:
