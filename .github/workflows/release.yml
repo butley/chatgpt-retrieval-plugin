@@ -42,7 +42,7 @@ jobs:
           password: ${{secrets.REPO_GITHUB_TOKEN}}
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@v2
+        uses: docker/build-push-action@v3
         with:
           context: .
           push: true
@@ -56,3 +56,15 @@ jobs:
           release_name : Release ${{ github.run_number }}
           draft : false
           prerelease : false
+      - name: SSH and Deploy to Server
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.INDIV_HOST }}
+          username: ${{ secrets.INDIV_USER }}
+          key: ${{ secrets.INDIV_SSH_KEY }}
+          script: |
+            cd ~/code/images/generic/chatgpt-retrieval-plugin
+            git pull
+            docker-compose pull
+            ./run.sh stop start
+            ENDSSH
