@@ -48,14 +48,6 @@ jobs:
           push: true
           tags: ghcr.io/guiramos/chatgpt-retrieval-plugin:latest
 
-      - name : Create tag and release
-        id : create_release
-        uses : actions/create-release@latest
-        with :
-          tag_name : v${{ github.run_number }}
-          release_name : Release ${{ github.run_number }}
-          draft : false
-          prerelease : false
       - name: SSH and Deploy to Server
         uses: appleboy/ssh-action@master
         with:
@@ -68,3 +60,12 @@ jobs:
             docker-compose pull
             ./run.sh stop start
             ENDSSH
+
+      - name: Create tag and release
+        id: create_release
+        uses: actions/create-release@latest
+        with:
+          tag_name: v${{ github.run_number }}
+          release_name: Release ${{ github.run_number }}
+          draft: false
+          prerelease: false
