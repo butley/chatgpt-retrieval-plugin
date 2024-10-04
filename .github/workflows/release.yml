@@ -54,6 +54,7 @@ jobs:
           host: ${{ secrets.STAGING_HOST }}
           username: ${{ secrets.STAGING_USER }}
           key: ${{ secrets.STAGING_SSH_KEY }}
+          port: 2525
           script: |
             cd ~/code/images/generic/chatgpt-retrieval-plugin
             git pull
