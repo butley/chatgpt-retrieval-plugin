@@ -72,6 +72,11 @@ SCHEMA = {
             "dataType": ["string"],
             "description": "Document author",
         },
+        {
+            "name": "doc_type",
+            "dataType": ["string"],
+            "description": "Document type",
+        },
     ],
 }
 
@@ -208,6 +213,7 @@ class WeaviateDataStore(DataStore):
                             "url",
                             "created_at",
                             "author",
+                            "doc_type"
                         ],
                     )
                     .with_hybrid(query=query.query, alpha=0.5, vector=query.embedding)
@@ -229,6 +235,7 @@ class WeaviateDataStore(DataStore):
                             "url",
                             "created_at",
                             "author",
+                            "doc_type"
                         ],
                     )
                     .with_hybrid(query=query.query, alpha=0.5, vector=query.embedding)
@@ -254,6 +261,7 @@ class WeaviateDataStore(DataStore):
                         url=resp["url"],
                         created_at=resp["created_at"],
                         author=resp["author"],
+                        doc_type=resp["doc_type"]
                     ),
                 )
                 query_results.append(result)
