@@ -163,6 +163,13 @@ components:
         author:
           title: Author
           type: string
+        doc_type:
+          title: Document Type
+          type: string
+        reference:
+          title: Document Type
+          type: string
+
     DocumentMetadataFilter:
       title: DocumentMetadataFilter
       type: object
@@ -183,6 +190,12 @@ components:
           type: string
         end_date:
           title: End Date
+          type: string
+        doc_type:
+          title: Document Type
+          type: string
+        reference:
+          title: Text reference
           type: string
     HTTPValidationError:
       title: HTTPValidationError
