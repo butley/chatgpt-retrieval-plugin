@@ -5,6 +5,7 @@ import uuid
 from typing import Dict, List, Optional
 
 import weaviate
+from docutils.nodes import reference
 from loguru import logger
 from weaviate import Client
 from weaviate.util import generate_uuid5
@@ -76,6 +77,11 @@ SCHEMA = {
             "name": "doc_type",
             "dataType": ["string"],
             "description": "Document type",
+        },
+        {
+            "name": "reference",
+            "dataType": ["string"],
+            "description": "Text reference",
         },
     ],
 }
@@ -213,7 +219,8 @@ class WeaviateDataStore(DataStore):
                             "url",
                             "created_at",
                             "author",
-                            "doc_type"
+                            "doc_type",
+                            "reference"
                         ],
                     )
                     .with_hybrid(query=query.query, alpha=0.5, vector=query.embedding)
@@ -235,7 +242,8 @@ class WeaviateDataStore(DataStore):
                             "url",
                             "created_at",
                             "author",
-                            "doc_type"
+                            "doc_type",
+                            "reference"
                         ],
                     )
                     .with_hybrid(query=query.query, alpha=0.5, vector=query.embedding)
@@ -261,7 +269,8 @@ class WeaviateDataStore(DataStore):
                         url=resp["url"],
                         created_at=resp["created_at"],
                         author=resp["author"],
-                        doc_type=resp["doc_type"]
+                        doc_type=resp["doc_type"],
+                        reference=resp["reference"],
                     ),
                 )
                 query_results.append(result)
