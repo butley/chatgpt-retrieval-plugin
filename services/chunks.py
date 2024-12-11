@@ -12,6 +12,7 @@ tokenizer = tiktoken.get_encoding(
     "cl100k_base"
 )  # The encoding scheme to use for tokenization
 
+
 # Constants
 CHUNK_SIZE = 16384  # The target size of each text chunk in tokens
 MIN_CHUNK_SIZE_CHARS = 350  # The minimum size of each text chunk in characters
