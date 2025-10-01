@@ -3,7 +3,8 @@ FROM python:3.10 as requirements-stage
 
 WORKDIR /tmp
 
-RUN pip install poetry
+# Install poetry plus the export plugin so `poetry export` remains available
+RUN pip install poetry poetry-plugin-export
 
 COPY ./pyproject.toml ./poetry.lock* /tmp/
 
