@@ -87,11 +87,8 @@ jobs:
               return 1
             }
 
-            verify_deployment() {
+            verify_service() {
               wait_for_healthy || return 1
-              expected_image_id="$(docker image inspect "$image@$digest" --format '{{.Id}}')" || return 1
-              running_image_id="$(docker inspect chatgpt-retrieval-plugin --format '{{.Image}}')" || return 1
-              test "$running_image_id" = "$expected_image_id" || return 1
               for network in butley_net letsencrypt_default; do
                 docker inspect chatgpt-retrieval-plugin --format '{{json .NetworkSettings.Networks}}' | grep -q "\"$network\":" || return 1
               done
@@ -99,11 +96,18 @@ jobs:
               curl -fsS --connect-timeout 10 --max-time 30 https://retrieval.hyperindiv.com/.well-known/ai-plugin.json >/dev/null || return 1
             }
 
+            verify_deployment() {
+              verify_service || return 1
+              expected_image_id="$(docker image inspect "$image@$digest" --format '{{.Id}}')" || return 1
+              running_image_id="$(docker inspect chatgpt-retrieval-plugin --format '{{.Image}}')" || return 1
+              test "$running_image_id" = "$expected_image_id" || return 1
+            }
+
             rollback() {
               echo "Staging deployment verification failed; restoring $previous_image_id"
               docker tag "$rollback_tag" "$image:latest" || return 1
-              docker compose up -d --no-deps --force-recreate chatgpt-retrieval-plugin || return 1
-              wait_for_healthy || return 1
+              docker compose up -d --no-deps --pull never --force-recreate chatgpt-retrieval-plugin || return 1
+              verify_service || return 1
               rollback_image_id="$(docker inspect chatgpt-retrieval-plugin --format '{{.Image}}')" || return 1
               test "$rollback_image_id" = "$previous_image_id" || return 1
               echo "Staging rollback is healthy on $rollback_image_id"
@@ -113,7 +117,7 @@ jobs:
             # host's independently managed checkout, env file, proxy, index, or volumes.
             docker pull "$image@$digest"
             docker tag "$image@$digest" "$image:latest"
-            if ! docker compose up -d --no-deps --force-recreate chatgpt-retrieval-plugin; then
+            if ! docker compose up -d --no-deps --pull never --force-recreate chatgpt-retrieval-plugin; then
               if ! rollback; then
                 docker compose ps || true
                 docker logs --tail 100 chatgpt-retrieval-plugin || true
@@ -121,8 +125,8 @@ jobs:
               exit 1
             fi
             if ! verify_deployment; then
-              docker compose ps
-              docker logs --tail 100 chatgpt-retrieval-plugin
+              docker compose ps || true
+              docker logs --tail 100 chatgpt-retrieval-plugin || true
               if ! rollback; then
                 docker compose ps || true
                 docker logs --tail 100 chatgpt-retrieval-plugin || true
