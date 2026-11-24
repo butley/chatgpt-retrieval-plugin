@@ -28,6 +28,7 @@ jobs:
           password: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: Build and push Docker image
+        id: build_image
         uses: docker/build-push-action@v3
         with:
           context: .
@@ -52,14 +53,48 @@ jobs:
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.STAGING_HOST }}
-          username: ${{ secrets.STAGING_USER }}
+          # The staging retrieval service is the root-owned compose project on port 22.
+          # STAGING_USER/port 2525 point at a separate home directory without butley_net.
+          username: root
           key: ${{ secrets.STAGING_SSH_KEY }}
-          port: 2525
+          port: 22
+          script_stop: true
+          command_timeout: 20m
           script: |
-            cd ~/code/images/generic/chatgpt-retrieval-plugin
-            git pull
-            docker-compose pull
-            ./run.sh stop start
+            set -euo pipefail
+
+            repo_dir=/root/code/images/generic/chatgpt-retrieval-plugin
+            image=registry.hyperindiv.com/chatgpt-retrieval-plugin
+            digest='${{ steps.build_image.outputs.digest }}'
+
+            test -n "$digest"
+            test "$digest" != "null"
+            cd "$repo_dir"
+
+            # Deploy exactly the image built by this workflow.  Do not pull or alter this
+            # host's independently managed checkout, env file, proxy, index, or volumes.
+            docker pull "$image@$digest"
+            docker tag "$image@$digest" "$image:latest"
+            docker compose up -d --no-deps --force-recreate chatgpt-retrieval-plugin
+
+            for attempt in $(seq 1 18); do
+              health="$(docker inspect chatgpt-retrieval-plugin --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}missing{{end}}')"
+              if [ "$health" = healthy ]; then
+                break
+              fi
+              if [ "$attempt" = 18 ]; then
+                docker compose ps
+                docker logs --tail 100 chatgpt-retrieval-plugin
+                exit 1
+              fi
+              sleep 10
+            done
+
+            expected_image_id="$(docker image inspect "$image@$digest" --format '{{.Id}}')"
+            running_image_id="$(docker inspect chatgpt-retrieval-plugin --format '{{.Image}}')"
+            test "$running_image_id" = "$expected_image_id"
+            docker exec chatgpt-retrieval-plugin curl -fsS http://127.0.0.1:9982/.well-known/ai-plugin.json >/dev/null
+            echo "Staging retrieval service is healthy on $running_image_id"
 
       - name: Create tag and release
         id: create_release
