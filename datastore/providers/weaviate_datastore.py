@@ -1,13 +1,15 @@
-import asyncio
 import os
 import re
 import uuid
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 
 import weaviate
 from docutils.nodes import reference
 from loguru import logger
+from requests.exceptions import RequestException
 from weaviate import Client
+from weaviate.batch import Batch
+from weaviate.exceptions import WeaviateBaseError
 from weaviate.util import generate_uuid5
 
 from datastore.datastore import DataStore
@@ -25,9 +27,7 @@ WEAVIATE_URL_DEFAULT = "http://localhost:8080"
 WEAVIATE_CLASS = os.environ.get("WEAVIATE_CLASS", "OpenAIDocument")
 
 WEAVIATE_BATCH_SIZE = int(os.environ.get("WEAVIATE_BATCH_SIZE", 20))
-WEAVIATE_BATCH_DYNAMIC = os.environ.get("WEAVIATE_BATCH_DYNAMIC", False)
 WEAVIATE_BATCH_TIMEOUT_RETRIES = int(os.environ.get("WEAVIATE_TIMEOUT_RETRIES", 3))
-WEAVIATE_BATCH_NUM_WORKERS = int(os.environ.get("WEAVIATE_BATCH_NUM_WORKERS", 1))
 
 SCHEMA = {
     "class": WEAVIATE_CLASS,
@@ -93,24 +93,82 @@ def extract_schema_properties(schema):
     return {property["name"] for property in properties}
 
 
+class WeaviateBatchWriteError(RuntimeError):
+    """A batch response rejected or omitted one or more document objects."""
+
+    def __init__(self, succeeded_ids: List[str], failed_ids: List[str]):
+        self.succeeded_ids = succeeded_ids
+        self.failed_ids = failed_ids
+        super().__init__("One or more Weaviate writes were not confirmed")
+
+    def as_http_detail(self) -> Dict[str, object]:
+        return {
+            "message": str(self),
+            "succeeded_ids": self.succeeded_ids,
+            "failed_ids": self.failed_ids,
+        }
+
+
 class WeaviateDataStore(DataStore):
-    def handle_errors(self, results: Optional[List[dict]]) -> List[str]:
-        if not self or not results:
+    @staticmethod
+    def _result_errors(result: dict) -> List[str]:
+        batch_result = result.get("result")
+        if not isinstance(batch_result, dict):
+            return ["Weaviate response did not include an object result"]
+        if "errors" not in batch_result:
             return []
 
-        error_messages = []
-        for result in results:
-            if (
-                "result" not in result
-                or "errors" not in result["result"]
-                or "error" not in result["result"]["errors"]
-            ):
-                continue
-            for message in result["result"]["errors"]["error"]:
-                error_messages.append(message["message"])
-                logger.error(message["message"])
+        errors = batch_result["errors"]
+        if not isinstance(errors, dict):
+            return ["Weaviate reported an invalid object error response"]
+        error_items = errors.get("error")
+        if not isinstance(error_items, list) or not error_items:
+            return ["Weaviate reported an object error without details"]
 
-        return error_messages
+        messages = []
+        for error in error_items:
+            if isinstance(error, dict) and error.get("message"):
+                messages.append(str(error["message"]))
+            else:
+                messages.append("Weaviate reported an object error without a message")
+        return messages
+
+    @staticmethod
+    def _confirmed_document_ids(
+        document_ids: List[str],
+        object_document_ids: Dict[str, str],
+        batch_responses: List[List[dict]],
+    ) -> List[str]:
+        """Return document IDs only when each of their batch objects was acknowledged."""
+        acknowledged_object_ids: Set[str] = set()
+        failed_ids: Set[str] = set()
+
+        for response in batch_responses:
+            for result in response:
+                if not isinstance(result, dict):
+                    continue
+                object_id = result.get("id")
+                if not isinstance(object_id, str) or object_id not in object_document_ids:
+                    continue
+
+                doc_id = object_document_ids[object_id]
+                object_errors = WeaviateDataStore._result_errors(result)
+                if object_errors:
+                    failed_ids.add(doc_id)
+                    for message in object_errors:
+                        logger.error(message)
+                else:
+                    acknowledged_object_ids.add(object_id)
+
+        for object_id, doc_id in object_document_ids.items():
+            if object_id not in acknowledged_object_ids:
+                failed_ids.add(doc_id)
+
+        failed_document_ids = [doc_id for doc_id in document_ids if doc_id in failed_ids]
+        succeeded_ids = [doc_id for doc_id in document_ids if doc_id not in failed_ids]
+        if failed_document_ids:
+            raise WeaviateBatchWriteError(succeeded_ids, failed_document_ids)
+        return succeeded_ids
 
     def __init__(self):
         auth_credentials = self._build_auth_credentials()
@@ -121,13 +179,6 @@ class WeaviateDataStore(DataStore):
             f"Connecting to weaviate instance at {url} with credential type {type(auth_credentials).__name__}"
         )
         self.client = Client(url, auth_client_secret=auth_credentials)
-        self.client.batch.configure(
-            batch_size=WEAVIATE_BATCH_SIZE,
-            dynamic=WEAVIATE_BATCH_DYNAMIC,  # type: ignore
-            callback=self.handle_errors,  # type: ignore
-            timeout_retries=WEAVIATE_BATCH_TIMEOUT_RETRIES,
-            num_workers=WEAVIATE_BATCH_NUM_WORKERS,
-        )
 
         if self.client.schema.contains(SCHEMA):
             current_schema = self.client.schema.get(WEAVIATE_CLASS)
@@ -143,6 +194,23 @@ class WeaviateDataStore(DataStore):
                 f"Creating collection {WEAVIATE_CLASS} with properties {new_schema_properties}"
             )
             self.client.schema.create_class(SCHEMA)
+
+    def _new_manual_batch(self) -> Batch:
+        """Create an isolated batch with no automatic flush or background workers.
+
+        The v3 client reports per-object status only through callbacks for automatic batches.
+        Those callbacks run on a mutable, shared Batch instance and can outlive a failed flush.
+        Manual creation returns the same per-object response synchronously instead.
+        """
+        batch = Batch(self.client._connection)  # type: ignore[attr-defined]
+        batch.configure(
+            batch_size=None,
+            dynamic=False,
+            callback=None,
+            timeout_retries=WEAVIATE_BATCH_TIMEOUT_RETRIES,
+            num_workers=1,
+        )
+        return batch
 
     @staticmethod
     def _build_auth_credentials():
@@ -162,39 +230,60 @@ class WeaviateDataStore(DataStore):
         Takes in a list of list of document chunks and inserts them into the database.
         Return a list of document ids.
         """
-        doc_ids = []
+        document_ids = list(chunks)
+        object_document_ids: Dict[str, str] = {}
+        objects: List[Dict[str, object]] = []
 
-        with self.client.batch as batch:
-            for doc_id, doc_chunks in chunks.items():
-                logger.debug(f"Upserting {doc_id} with {len(doc_chunks)} chunks")
-                for doc_chunk in doc_chunks:
-                    # we generate a uuid regardless of the format of the document_id because
-                    # weaviate needs a uuid to store each document chunk and
-                    # a document chunk cannot share the same uuid
-                    doc_uuid = generate_uuid5(doc_chunk, WEAVIATE_CLASS)
-                    metadata = doc_chunk.metadata
-                    doc_chunk_dict = doc_chunk.dict()
-                    doc_chunk_dict.pop("metadata")
-                    for key, value in metadata.dict().items():
-                        doc_chunk_dict[key] = value
-                    doc_chunk_dict["chunk_id"] = doc_chunk_dict.pop("id")
-                    doc_chunk_dict["source"] = (
-                        doc_chunk_dict.pop("source").value
-                        if doc_chunk_dict["source"]
-                        else None
-                    )
-                    embedding = doc_chunk_dict.pop("embedding")
+        # Build every expected object before issuing the first write. That lets a later
+        # transport failure mark unattempted objects as unconfirmed rather than successful.
+        for doc_id, doc_chunks in chunks.items():
+            logger.debug(f"Upserting {doc_id} with {len(doc_chunks)} chunks")
+            for doc_chunk in doc_chunks:
+                doc_uuid = str(generate_uuid5(doc_chunk, WEAVIATE_CLASS))
+                object_document_ids[doc_uuid] = doc_id
+                metadata = doc_chunk.metadata
+                doc_chunk_dict = doc_chunk.dict()
+                doc_chunk_dict.pop("metadata")
+                for key, value in metadata.dict().items():
+                    doc_chunk_dict[key] = value
+                doc_chunk_dict["chunk_id"] = doc_chunk_dict.pop("id")
+                doc_chunk_dict["source"] = (
+                    doc_chunk_dict.pop("source").value
+                    if doc_chunk_dict["source"]
+                    else None
+                )
+                objects.append(
+                    {
+                        "uuid": doc_uuid,
+                        "data_object": doc_chunk_dict,
+                        "class_name": WEAVIATE_CLASS,
+                        "vector": doc_chunk_dict.pop("embedding"),
+                    }
+                )
 
-                    batch.add_data_object(
-                        uuid=doc_uuid,
-                        data_object=doc_chunk_dict,
-                        class_name=WEAVIATE_CLASS,
-                        vector=embedding,
-                    )
+        # Use a request-local manual Batch.  Automatic batching uses a shared worker pool where
+        # callbacks can arrive after a failed flush and contaminate a later request.
+        batch = self._new_manual_batch()
+        batch_responses: List[List[dict]] = []
+        pending_objects = 0
+        try:
+            for object_ in objects:
+                batch.add_data_object(**object_)
+                pending_objects += 1
+                if pending_objects == WEAVIATE_BATCH_SIZE:
+                    batch_responses.append(batch.create_objects())
+                    pending_objects = 0
 
-                doc_ids.append(doc_id)
-            batch.flush()
-        return doc_ids
+            if pending_objects:
+                batch_responses.append(batch.create_objects())
+        except (RequestException, WeaviateBaseError) as error:
+            logger.exception("Weaviate batch transport failed")
+
+        return self._confirmed_document_ids(
+            document_ids,
+            object_document_ids,
+            batch_responses,
+        )
 
     async def _query(
         self,
