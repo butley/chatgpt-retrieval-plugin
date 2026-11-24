@@ -11,6 +11,7 @@ from datastore.providers.weaviate_datastore import (  # noqa: E402
     WeaviateBatchWriteError,
     WeaviateDataStore,
 )
+from datastore.providers import weaviate_datastore  # noqa: E402
 from models.models import DocumentChunk, DocumentChunkMetadata  # noqa: E402
 from server import main as server_main  # noqa: E402
 
@@ -63,6 +64,22 @@ def datastore(response_factory) -> WeaviateDataStore:
 
 def successful_response(objects):
     return [{"id": object_["uuid"], "result": {}} for object_ in objects]
+
+
+def test_date_only_created_at_is_normalized_to_utc_midnight():
+    assert (
+        WeaviateDataStore._normalize_created_at("2026-11-24")
+        == "2026-11-24T00:00:00Z"
+    )
+    assert (
+        WeaviateDataStore._normalize_created_at("2026-11-24T12:34:56Z")
+        == "2026-11-24T12:34:56Z"
+    )
+    assert WeaviateDataStore._normalize_created_at("2026-02-30") == "2026-02-30"
+
+
+def test_weaviate_query_provider_imports_asyncio_for_concurrent_queries():
+    assert weaviate_datastore.asyncio.gather is not None
 
 
 @pytest.mark.asyncio

@@ -1,6 +1,8 @@
+import asyncio
 import os
 import re
 import uuid
+from datetime import date
 from typing import Dict, List, Optional, Set
 
 import weaviate
@@ -110,6 +112,20 @@ class WeaviateBatchWriteError(RuntimeError):
 
 
 class WeaviateDataStore(DataStore):
+    @staticmethod
+    def _normalize_created_at(created_at: Optional[str]) -> Optional[str]:
+        """Make a valid date-only value acceptable to Weaviate's date property."""
+        if not isinstance(created_at, str) or not re.fullmatch(
+            r"\d{4}-\d{2}-\d{2}", created_at
+        ):
+            return created_at
+
+        try:
+            date.fromisoformat(created_at)
+        except ValueError:
+            return created_at
+        return f"{created_at}T00:00:00Z"
+
     @staticmethod
     def _result_errors(result: dict) -> List[str]:
         batch_result = result.get("result")
@@ -244,7 +260,11 @@ class WeaviateDataStore(DataStore):
                 metadata = doc_chunk.metadata
                 doc_chunk_dict = doc_chunk.dict()
                 doc_chunk_dict.pop("metadata")
-                for key, value in metadata.dict().items():
+                metadata_dict = metadata.dict()
+                metadata_dict["created_at"] = self._normalize_created_at(
+                    metadata_dict["created_at"]
+                )
+                for key, value in metadata_dict.items():
                     doc_chunk_dict[key] = value
                 doc_chunk_dict["chunk_id"] = doc_chunk_dict.pop("id")
                 doc_chunk_dict["source"] = (
