@@ -15,6 +15,7 @@ from models.api import (
     UpsertResponse,
 )
 from datastore.factory import get_datastore
+from datastore.providers.weaviate_datastore import WeaviateBatchWriteError
 from services.file import get_document_from_file
 
 from models.models import DocumentMetadata, Source
@@ -83,6 +84,9 @@ async def upsert(
     try:
         ids = await datastore.upsert(request.documents)
         return UpsertResponse(ids=ids)
+    except WeaviateBatchWriteError as e:
+        logger.error(e)
+        raise HTTPException(status_code=502, detail=e.as_http_detail())
     except Exception as e:
         logger.error(e)
         raise HTTPException(status_code=500, detail="Internal Service Error")
