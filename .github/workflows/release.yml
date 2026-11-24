@@ -20,19 +20,20 @@ jobs:
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v1
 
-      - name: 'Login to GitHub Container Registry'
+      - name: Login to Private Docker Registry
         uses: docker/login-action@v3
         with:
-          registry: ghcr.io
-          username: ${{github.actor}}
-          password: ${{secrets.REPO_GITHUB_TOKEN}}
+          registry: registry.hyperindiv.com
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: Build and push Docker image
+        id: build_image
         uses: docker/build-push-action@v3
         with:
           context: .
           push: true
-          tags: ghcr.io/guiramos/chatgpt-retrieval-plugin:latest
+          tags: registry.hyperindiv.com/chatgpt-retrieval-plugin:latest
 
       - name: SSH and Deploy to Server (main)
         if: github.ref == 'refs/heads/main'
@@ -49,16 +50,86 @@ jobs:
 
       - name: SSH and Deploy to Server (staging)
         if: github.ref == 'refs/heads/staging'
-        uses: appleboy/ssh-action@master
+        uses: appleboy/ssh-action@c4f70287fc37c43b14b30b407224bbbc8e8c6327
         with:
           host: ${{ secrets.STAGING_HOST }}
-          username: ${{ secrets.STAGING_USER }}
+          # The staging retrieval service is the root-owned compose project on port 22.
+          # STAGING_USER/port 2525 point at a separate home directory without butley_net.
+          username: root
           key: ${{ secrets.STAGING_SSH_KEY }}
+          port: 22
+          command_timeout: 20m
           script: |
-            cd ~/code/images/generic/chatgpt-retrieval-plugin
-            git pull
-            docker-compose pull
-            ./run.sh stop start
+            set -euo pipefail
+
+            repo_dir=/root/code/images/generic/chatgpt-retrieval-plugin
+            image=registry.hyperindiv.com/chatgpt-retrieval-plugin
+            digest='${{ steps.build_image.outputs.digest }}'
+
+            test -n "$digest"
+            test "$digest" != "null"
+            cd "$repo_dir"
+
+            previous_image_id="$(docker inspect chatgpt-retrieval-plugin --format '{{.Image}}')"
+            previous_health="$(docker inspect chatgpt-retrieval-plugin --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}missing{{end}}')"
+            test "$previous_health" = healthy
+            rollback_tag="$image:staging-rollback-${{ github.run_id }}"
+            docker tag "$previous_image_id" "$rollback_tag"
+
+            wait_for_healthy() {
+              for attempt in $(seq 1 18); do
+                health="$(docker inspect chatgpt-retrieval-plugin --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}missing{{end}}')" || return 1
+                if [ "$health" = healthy ]; then
+                  return 0
+                fi
+                sleep 10
+              done
+              return 1
+            }
+
+            verify_deployment() {
+              wait_for_healthy || return 1
+              expected_image_id="$(docker image inspect "$image@$digest" --format '{{.Id}}')" || return 1
+              running_image_id="$(docker inspect chatgpt-retrieval-plugin --format '{{.Image}}')" || return 1
+              test "$running_image_id" = "$expected_image_id" || return 1
+              for network in butley_net letsencrypt_default; do
+                docker inspect chatgpt-retrieval-plugin --format '{{json .NetworkSettings.Networks}}' | grep -q "\"$network\":" || return 1
+              done
+              docker exec chatgpt-retrieval-plugin curl -fsS http://127.0.0.1:9982/.well-known/ai-plugin.json >/dev/null || return 1
+              curl -fsS --connect-timeout 10 --max-time 30 https://retrieval.hyperindiv.com/.well-known/ai-plugin.json >/dev/null || return 1
+            }
+
+            rollback() {
+              echo "Staging deployment verification failed; restoring $previous_image_id"
+              docker tag "$rollback_tag" "$image:latest" || return 1
+              docker compose up -d --no-deps --force-recreate chatgpt-retrieval-plugin || return 1
+              wait_for_healthy || return 1
+              rollback_image_id="$(docker inspect chatgpt-retrieval-plugin --format '{{.Image}}')" || return 1
+              test "$rollback_image_id" = "$previous_image_id" || return 1
+              echo "Staging rollback is healthy on $rollback_image_id"
+            }
+
+            # Deploy exactly the image built by this workflow.  Do not pull or alter this
+            # host's independently managed checkout, env file, proxy, index, or volumes.
+            docker pull "$image@$digest"
+            docker tag "$image@$digest" "$image:latest"
+            if ! docker compose up -d --no-deps --force-recreate chatgpt-retrieval-plugin; then
+              if ! rollback; then
+                docker compose ps || true
+                docker logs --tail 100 chatgpt-retrieval-plugin || true
+              fi
+              exit 1
+            fi
+            if ! verify_deployment; then
+              docker compose ps
+              docker logs --tail 100 chatgpt-retrieval-plugin
+              if ! rollback; then
+                docker compose ps || true
+                docker logs --tail 100 chatgpt-retrieval-plugin || true
+              fi
+              exit 1
+            fi
+            echo "Staging retrieval service is healthy on $running_image_id"
 
       - name: Create tag and release
         id: create_release
